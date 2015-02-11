@@ -20,9 +20,10 @@ class Order extends Application {
         //FIXME
         $order_num = $this->orders->highest()+1;
         $order = $this->orders->create();
-        $order->num = $this->orders->highest()+1;
-        $order->date = getdate();
+        $order->num = $order_num;
+        $order->date = date();
         $order->status = 'a';
+        $order->total = 0.0;
         $this->orders->add($order);
         
         redirect('/order/display_menu/' . $order_num);
@@ -34,9 +35,10 @@ class Order extends Application {
         if ($order_num == null)
             redirect('/order/neworder');
 
+        $order = $this->orders->get($order_num);
         $this->data['pagebody'] = 'show_menu';
         $this->data['order_num'] = $order_num;
-        $this->data['title'] = $order_num;
+        $this->data['title'] = "Order # " . $order_num . ": Total = $" . sprintf('%0.2f', $order->total);
 
         // Make the columns
         $this->data['meals'] = $this->make_column('m');
@@ -67,8 +69,7 @@ class Order extends Application {
 
     // add an item to an order
     function add($order_num, $item) {
-        $order = $this->orders->get($order_num);
-        
+        $this->orders->add_item($order_num, $item);
         redirect('/order/display_menu/' . $order_num);
     }
 
@@ -78,19 +79,37 @@ class Order extends Application {
         $this->data['pagebody'] = 'show_order';
         $this->data['order_num'] = $order_num;
         //FIXME
-
+        $this->data['total'] = number_format($this->orders->total($order_num), 2);
+        
+        $items = $this->orderitems->group($order_num);
+        foreach($items as $item)
+        {
+            $menuitem = $this->menu->get($item->item);
+            $item->code = $menuitem->name;
+        }
+        $this->data['items'] = $items;
+        $this->data['okornot'] = $this->orders->validate($order_num) ? '' : 'disabled';
         $this->render();
     }
 
     // proceed with checkout
-    function proceed($order_num) {
-        //FIXME
+    function commit($order_num) {
+        if (!$this->orders->validate($order_num))
+            redirect('/order/display_menu/' . $order_num);
+        $record = $this->orders->get($order_num);
+        $record->date = date(DATE_ATOM);
+        $record->status = 'c';
+        $record->total = $this->orders->total($order_num);
+        $this->orders->update($record);
         redirect('/');
     }
 
     // cancel the order
     function cancel($order_num) {
-        //FIXME
+        $this->orderitems->delete_some($order_num);
+        $record = $this->orders->get($order_num);
+        $record->status = 'x';
+        $this->orders->update($record);
         redirect('/');
     }
 
